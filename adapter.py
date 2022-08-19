@@ -1,5 +1,7 @@
 from bridge import Bridge
+
 # import json
+
 
 class Adapter:
     # base_url = 'https://min-api.cryptocompare.com/data/price'
@@ -7,10 +9,10 @@ class Adapter:
     # to_params = ['quote', 'to', 'market']
 
     def __init__(self, inputs):
-        self.id = inputs.get('id', '1')
+        self.id = inputs.get("id", "1")
         # self.request_data = input.get('data')
         # self.id = 1
-        self.url = 'https://api.stlouisfed.org/fred/series/observations?file_type=json&limit=1&offset=0&sort_order=desc&units=lin&series_id=MEDCPIM158SFRBCLE&api_key=7817752224816662f4f155d53988793f'
+        self.url = "https://api.stlouisfed.org/fred/series/observations?file_type=json&limit=1&offset=0&sort_order=desc&units=lin&series_id=MEDCPIM158SFRBCLE&api_key=7817752224816662f4f155d53988793f"
         # if self.validate_request_data():
         self.bridge = Bridge()
         # self.set_params()
@@ -39,10 +41,10 @@ class Adapter:
         try:
             params = {}
             response = self.bridge.request(self.url, params)
-            
-            data = response.json()['observations'][0]
-            self.result = data['value']
-            data['result'] = self.result
+
+            data = response.json()["observations"][0]
+            self.result = data["value"]
+            data["result"] = self.result
             self.result_success(data)
         except Exception as e:
             self.result_error(e)
@@ -50,19 +52,20 @@ class Adapter:
             self.bridge.close()
 
     def result_success(self, data):
-        self.result = {
-            'jobRunID': self.id,
-            'data': data,
-            'result': self.result,
-            'statusCode': 200,
-        }
+        self.result = {"value": data["result"]}
+        # self.result = {
+        #     "jobRunID": self.id,
+        #     "data": data,
+        #     "result": self.result,
+        #     "statusCode": 200,
+        # }
 
     def result_error(self, error):
         self.result = {
-            'jobRunID': self.id,
-            'status': 'errored',
-            'error': f'There was an error: {error}',
-            'statusCode': 500,
+            "jobRunID": self.id,
+            "status": "errored",
+            "error": f"There was an error: {error}",
+            "statusCode": 500,
         }
 
 
