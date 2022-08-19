@@ -52,12 +52,13 @@ class Adapter:
             self.bridge.close()
 
     def result_success(self, data):
-        self.result = {
-            "jobRunID": self.id,
-            "data": data,
-            "result": self.result,
-            "statusCode": 200,
-        }
+        self.result = {"value": data["result"]}
+        # self.result = {
+        #     "jobRunID": self.id,
+        #     "data": data,
+        #     "result": self.result,
+        #     "statusCode": 200,
+        # }
 
     def result_error(self, error):
         self.result = {
