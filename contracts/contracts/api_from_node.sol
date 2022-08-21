@@ -10,14 +10,15 @@ import "@chainlink/contracts/src/v0.8/ConfirmedOwner.sol";
 contract postUintTemplate is ChainlinkClient, ConfirmedOwner {
   using Chainlink for Chainlink.Request;
 
-  uint256 public Uint;
+  uint256 public Uint; // the target data from external adapter
 
   bytes32 private externalJobId;
   uint256 private oraclePayment;
   address private oracle;
   
   event RequestUintFulfilled(bytes32 indexed requestId, uint256 indexed Uint);
-
+  
+  // on Polygon Testnet. 
   constructor() ConfirmedOwner(msg.sender){
     setChainlinkToken(0x326C977E6efc84E512bB9C30f76E30c160eD06FB);
     oracle = 0x103Ca41fa1257d5014b04b6B212B251e9E7A740a;
@@ -25,9 +26,7 @@ contract postUintTemplate is ChainlinkClient, ConfirmedOwner {
     oraclePayment = (0.0 * LINK_DIVISIBILITY); // n * 10**18
   }
 
-  function requestUint()
-    public
-    onlyOwner
+  function requestUint() public onlyOwner
   {
     Chainlink.Request memory req = buildChainlinkRequest(externalJobId, address(this), this.fulfillUint.selector);
     req.add("path", "data,result");
