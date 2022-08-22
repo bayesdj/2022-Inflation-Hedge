@@ -14,4 +14,5 @@ if response.status_code == requests.codes.ok:
 else:
     print("Error:", response.status_code, response.text)
 # %%
-a = 3 
+
+date_url = "https://api.stlouisfed.org/fred/releases/dates?file_type=json&include_release_dates_with_no_data=true"

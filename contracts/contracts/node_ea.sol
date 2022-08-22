@@ -42,4 +42,8 @@ contract postUintTemplate is ChainlinkClient, ConfirmedOwner {
     Uint = _Uint;
   }
 
+  function getUint() external view returns(uint256) {
+    return Uint;
+  }
+
 }
