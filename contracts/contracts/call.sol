@@ -14,6 +14,8 @@ contract optionExchange is Pausable, Ownable {
     uint public payout_amount; 
     uint public multiplier;
     uint public fee;
+    uint public expire_time; 
+    bool public settled;
 
     struct option {
         uint strike; //Price in USD (18 decimal places) option allows buyer to purchase tokens at
@@ -34,6 +36,8 @@ contract optionExchange is Pausable, Ownable {
         multiplier = 1e15; // one finney
         payout_amount = 1000*multiplier;
         fee = 1*multiplier;
+        expire_time = 1663088400; // Sep 13 2022, 10:00 am
+        settled = false;
     }
 
     // function getTarget() public view returns (uint256){
@@ -42,8 +46,9 @@ contract optionExchange is Pausable, Ownable {
 
     function placeBid(uint _strike, uint _premium) public payable {
         uint premium_amount = _premium*multiplier;
+        require(premium_amount>0 && premium_amount<payout_amount, "invalid premium amount");
         require(msg.value == premium_amount, "not enough premium");
-        option memory call = option({premium: premium_amount, strike: _strike, canceled:false, 
+        option memory call = option({premium: premium_amount, strike: _strike*multiplier, canceled:false, 
                                 id:bids.length, seller:address(0), buyer:msg.sender,
                                 transacted: false});
         bids.push(call);
@@ -51,8 +56,9 @@ contract optionExchange is Pausable, Ownable {
 
     function placeAsk(uint _strike, uint _premium) public payable {
         uint premium_amount = _premium*multiplier;
+        require(premium_amount>0 && premium_amount<payout_amount, "invalid premium amount");
         require(msg.value == payout_amount-premium_amount, "not enough margin");
-        option memory call = option({premium: premium_amount, strike: _strike, canceled:false, 
+        option memory call = option({premium: premium_amount, strike: _strike*multiplier, canceled:false, 
                                 id:asks.length, seller:msg.sender, buyer:address(0), 
                                 transacted: false});
         asks.push(call);
@@ -60,14 +66,16 @@ contract optionExchange is Pausable, Ownable {
 
     function buy(uint id) public payable {
         require(!asks[id].canceled, "Option is canceled");
-        require(msg.value == asks[id].premium, "not enough margin");
+        require(!asks[id].transacted, "Option already taken");
+        require(msg.value == asks[id].premium, "incorrect margin");
         asks[id].buyer = msg.sender;
         asks[id].transacted = true;
     }
 
     function sell(uint id) public payable {
         require(!bids[id].canceled, "Option is canceled");
-        require(msg.value == payout_amount - asks[id].premium, "not enough margin");
+        require(!bids[id].transacted, "Option already taken");
+        require(msg.value == payout_amount - bids[id].premium, "incorrect margin");
         bids[id].seller = msg.sender;
         bids[id].transacted = true;
     }
@@ -90,8 +98,10 @@ contract optionExchange is Pausable, Ownable {
         x.canceled = true;
     }
 
-    function expire(uint ePrice) public onlyOwner {
+    function expire(uint _ePrice) public onlyOwner {
         // uint256 ePrice = _ePrice * multiplier;
+        require(block.timestamp > expire_time, "expire time not reached yet");
+        uint256 ePrice = _ePrice * multiplier;
         for (uint i=0; i<bids.length; i++) {
             if (bids[i].transacted){
                 option storage x = bids[i];
@@ -106,10 +116,23 @@ contract optionExchange is Pausable, Ownable {
                 winners[payee] += (payout_amount - fee);
             }
         }
+        settled = true;
+    }
+
+    function gettime() public view returns (uint256) {
+        return block.timestamp; 
+    }
+
+    function setExpireTime(uint _expire_time) external onlyOwner {
+        expire_time = _expire_time; 
     }
 
     function withdraw() public payable {
-        payable(msg.sender).transfer(winners[msg.sender]);
+        require(settled, "not settled yet");
+        uint256 amount = winners[msg.sender];
+        require(amount > 0, "no money owed");
+        winners[msg.sender] = 0;
+        payable(msg.sender).transfer(amount);
     }
 
     function getContractBal() external view returns (uint256) {
