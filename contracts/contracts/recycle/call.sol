@@ -4,10 +4,10 @@ pragma solidity ^0.8.4;
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
-interface node_ea {
-    // function requestUint() external;
-    function getUint() external view returns(uint256);
-}
+// interface node_ea {
+//     // function requestUint() external;
+//     function getUint() external view returns(uint256);
+// }
 
 contract optionExchange is Pausable, Ownable {
     address public underlying_add;
@@ -32,7 +32,7 @@ contract optionExchange is Pausable, Ownable {
     mapping(address => uint256) public winners;
 
     constructor() {
-        underlying_add = 0x4C42099cDb7D86A8e694129Fa2a2eB84CD55e149;
+        underlying_add = 0xc1aE74454fC26c087642aA68a751b8bd51dD5eea;
         multiplier = 1e15; // one finney
         payout_amount = 1000*multiplier;
         fee = 1*multiplier;
@@ -40,12 +40,11 @@ contract optionExchange is Pausable, Ownable {
         settled = false;
     }
 
-    function getTarget() public view returns (uint256){
-        return node_ea(underlying_add).getUint()*10;
-    }
+    // function getTarget() public view returns (uint256){
+    //     return node_ea(underlying_add).getUint();
+    // }
 
     function placeBid(uint _strike, uint _premium) public payable {
-        require(!settled, "call contract already settled");
         uint premium_amount = _premium*multiplier;
         require(premium_amount>0 && premium_amount<payout_amount, "invalid premium amount");
         require(msg.value == premium_amount, "not enough premium");
@@ -56,7 +55,6 @@ contract optionExchange is Pausable, Ownable {
     }
 
     function placeAsk(uint _strike, uint _premium) public payable {
-        require(!settled, "call contract already settled");
         uint premium_amount = _premium*multiplier;
         require(premium_amount>0 && premium_amount<payout_amount, "invalid premium amount");
         require(msg.value == payout_amount-premium_amount, "not enough margin");
@@ -67,7 +65,6 @@ contract optionExchange is Pausable, Ownable {
     }
 
     function buy(uint id) public payable {
-        require(!settled, "call contract already settled");
         require(!asks[id].canceled, "Option is canceled");
         require(!asks[id].transacted, "Option already taken");
         require(msg.value == asks[id].premium, "incorrect margin");
@@ -76,7 +73,6 @@ contract optionExchange is Pausable, Ownable {
     }
 
     function sell(uint id) public payable {
-        require(!settled, "call contract already settled");
         require(!bids[id].canceled, "Option is canceled");
         require(!bids[id].transacted, "Option already taken");
         require(msg.value == payout_amount - bids[id].premium, "incorrect margin");
@@ -102,19 +98,15 @@ contract optionExchange is Pausable, Ownable {
         x.canceled = true;
     }
 
-    function expire() public onlyOwner {
-        require(block.timestamp > expire_time, "expire time not reached yet");
+    function expire(uint _ePrice) public onlyOwner {
         // uint256 ePrice = _ePrice * multiplier;
-        uint256 ePrice = getTarget() * multiplier;
+        require(block.timestamp > expire_time, "expire time not reached yet");
+        uint256 ePrice = _ePrice * multiplier;
         for (uint i=0; i<bids.length; i++) {
             if (bids[i].transacted){
                 option storage x = bids[i];
                 address payee = (ePrice > x.strike)? x.buyer : x.seller;
                 winners[payee] += (payout_amount - fee);
-            }
-            else if (!bids[i].canceled){
-                option storage x = bids[i];
-                winners[x.buyer] += x.premium;
             }
         }
         for (uint i=0; i<asks.length; i++) {
@@ -122,10 +114,6 @@ contract optionExchange is Pausable, Ownable {
                 option storage x = asks[i];
                 address payee = (ePrice > x.strike)? x.buyer : x.seller;
                 winners[payee] += (payout_amount - fee);
-            }
-            else if (!asks[i].canceled){
-                option storage x = asks[i];
-                winners[x.seller] += payout_amout - x.premium;
             }
         }
         settled = true;
@@ -137,11 +125,6 @@ contract optionExchange is Pausable, Ownable {
 
     function setExpireTime(uint _expire_time) external onlyOwner {
         expire_time = _expire_time; 
-    }
-
-    function ownerWithdraw() external onlyOwner{
-        require(settled, "not settled yet");
-        payable(msg.sender).transfer(address(this).balance);
     }
 
     function withdraw() public payable {
