@@ -4,46 +4,58 @@ pragma solidity ^0.8.4;
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
+///@title this is the contract where the underlying resides. 
 interface node_ea {
     // function requestUint() external;
     function getUint() external view returns(uint256);
 }
 
+/** @title binary call option exchange. Users can place bids and asks, take the bids
+or asks, cancel them. At expiration, the binary option will pay buyer the payout_amount 
+(minus a fee) if underlying > strike, otherwise the payout_amount (minus a fee) goes to 
+the seller. 
+*/
 contract optionExchange is Pausable, Ownable {
     address public underlying_add;
     uint public payout_amount; 
-    uint public multiplier;
-    uint public fee;
+    uint public multiplier; 
+    uint public fee; // rewards for exchange owner, only charged when transaction occurs.
     uint public expire_time; 
-    bool public settled;
+    bool public settled; // once settled, users can withdraw their tokens. 
 
     struct option {
-        uint strike; //Price in USD (18 decimal places) option allows buyer to purchase tokens at
-        uint premium; //Fee in contract token that option writer charges
+        uint strike; // the underlying will compare with strike at expiration
+        uint premium; //Fee that option writer charges
         bool canceled; //Has option been canceled
         uint id; //Unique ID of option, also array index
         address seller; //Issuer of option
         address buyer; //Buyer of option
-        bool transacted;
+        bool transacted; // is the option transacted
     }
 
-    option[] public bids;
-    option[] public asks;
+    ///@notice arrays to hold bids and asks. 
+    option[] public bids; 
+    option[] public asks; 
+    
+    ///@notice account balances after settlement. 
     mapping(address => uint256) public winners;
 
     constructor() {
         underlying_add = 0x4C42099cDb7D86A8e694129Fa2a2eB84CD55e149;
-        multiplier = 1e15; // one finney
-        payout_amount = 1000*multiplier;
+        multiplier = 1e15; /// one finney
+        payout_amount = 1000*multiplier; /// one ether
         fee = 1*multiplier;
-        expire_time = 1663088400; // Sep 13 2022, 10:00 am
+        expire_time = 1663088400; /// unix time Sep 13 2022, 10:00 am
         settled = false;
     }
 
+    /// get the underlying value. It is at about 648 on 8/24/22
     function getTarget() public view returns (uint256){
         return node_ea(underlying_add).getUint()*10;
     }
 
+    ///@param _strike strike price in finney. 
+    ///@param _premium price of option in finney.
     function placeBid(uint _strike, uint _premium) public payable {
         require(!settled, "call contract already settled");
         uint premium_amount = _premium*multiplier;
@@ -66,6 +78,7 @@ contract optionExchange is Pausable, Ownable {
         asks.push(call);
     }
 
+    ///@param id index in asks array
     function buy(uint id) public payable {
         require(!settled, "call contract already settled");
         require(!asks[id].canceled, "Option is canceled");
@@ -75,6 +88,7 @@ contract optionExchange is Pausable, Ownable {
         asks[id].transacted = true;
     }
 
+    ///@param id index in bids array
     function sell(uint id) public payable {
         require(!settled, "call contract already settled");
         require(!bids[id].canceled, "Option is canceled");
@@ -84,6 +98,7 @@ contract optionExchange is Pausable, Ownable {
         bids[id].transacted = true;
     }
 
+    ///@param id index in bids array
     function cancelBid(uint id) public payable {
         option storage x = bids[id];
         require(x.buyer == msg.sender, "only the buyer can cancel this bid");
@@ -93,6 +108,7 @@ contract optionExchange is Pausable, Ownable {
         x.canceled = true;
     }
 
+    ///@param id index in asks array
     function cancelAsk(uint id) public payable {
         option storage x = asks[id];
         require(x.seller == msg.sender, "only the seller can cancel this ask");
@@ -102,6 +118,15 @@ contract optionExchange is Pausable, Ownable {
         x.canceled = true;
     }
 
+    /** After expiration time, the underlying from the API should be updated. However, 
+    the API provider may or may not update at the exact time. Thefore, the owner 
+    should call this function once the API is updated. Another solution is to use 
+    Chainlink Keeper to call this function. 
+    Upon expiration, if underlying is greater than strike, option buyers win the payout-
+    amount. If underlying is less than strike, option sellers win the payout-amount. 
+    If untransacted bids or asks are still not canceled, deposit will be available 
+    for withdraw. 
+    */ 
     function expire() public onlyOwner {
         require(block.timestamp > expire_time, "expire time not reached yet");
         // uint256 ePrice = _ePrice * multiplier;
@@ -135,15 +160,20 @@ contract optionExchange is Pausable, Ownable {
         return block.timestamp; 
     }
 
+    ///@dev this is a testing function. Expiration should be immutable. 
     function setExpireTime(uint _expire_time) external onlyOwner {
         expire_time = _expire_time; 
     }
 
+    /** allow contract owner to withdraw fees in the contract after other users
+    withdraw their balances */
     function ownerWithdraw() external onlyOwner{
         require(settled, "not settled yet");
         payable(msg.sender).transfer(address(this).balance);
     }
 
+    /** winners collect their balances or users get back their margins from bids
+    and asks */
     function withdraw() public payable {
         require(settled, "not settled yet");
         uint256 amount = winners[msg.sender];

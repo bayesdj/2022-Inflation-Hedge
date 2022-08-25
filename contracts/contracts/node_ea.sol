@@ -7,6 +7,7 @@ pragma solidity ^0.8.7;
 import "@chainlink/contracts/src/v0.8/ChainlinkClient.sol";
 import "@chainlink/contracts/src/v0.8/ConfirmedOwner.sol";
 
+/// @title this contract retrieves the underlying target from API. 
 contract postUintTemplate is ChainlinkClient, ConfirmedOwner {
   using Chainlink for Chainlink.Request;
 
@@ -42,6 +43,7 @@ contract postUintTemplate is ChainlinkClient, ConfirmedOwner {
     Uint = _Uint;
   }
 
+  /// get the underlying value. 
   function getUint() external view returns(uint256) {
     return Uint;
   }
