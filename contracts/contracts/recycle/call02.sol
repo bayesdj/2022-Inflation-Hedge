@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.7;
+pragma solidity ^0.8.4;
 
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "@chainlink/contracts/src/v0.8/KeeperCompatible.sol";
 
 ///@title this is the contract where the underlying resides. 
 interface node_ea {
-    function requestUint() external;
+    // function requestUint() external;
     function getUint() external view returns(uint256);
 }
 
@@ -16,16 +15,12 @@ or asks, cancel them. At expiration, the binary option will pay buyer the payout
 (minus a fee) if underlying > strike, otherwise the payout_amount (minus a fee) goes to 
 the seller. 
 */
-contract optionExchange is Pausable, Ownable, KeeperCompatibleInterface {
+contract optionExchange is Pausable, Ownable {
     address public underlying_add;
     uint public payout_amount; 
     uint public multiplier; 
     uint public fee; // rewards for exchange owner, only charged when transaction occurs.
     uint public expire_time; 
-    uint public underlying;
-    uint public keeper_interval;
-    uint public keeper_timestamp;
-    uint public keeper_counter;
     bool public settled; // once settled, users can withdraw their tokens. 
 
     struct option {
@@ -46,45 +41,12 @@ contract optionExchange is Pausable, Ownable, KeeperCompatibleInterface {
     mapping(address => uint256) public winners;
 
     constructor() {
-        underlying_add = 0x1D2CcD6157f50EFd35894Af2a1aeFcacA48c5252;
+        underlying_add = 0x4C42099cDb7D86A8e694129Fa2a2eB84CD55e149;
         multiplier = 1e15; /// one finney
         payout_amount = 1000*multiplier; /// one ether
         fee = 1*multiplier;
         expire_time = 1663088400; /// unix time Sep 13 2022, 10:00 am
         settled = false;
-        underlying = getTarget();
-        keeper_interval = 3600*4; /// 4 hours;
-        keeper_timestamp = block.timestamp;
-        keeper_counter = 0;
-    }
-
-    function max(uint256 a, uint256 b) public pure returns (uint256) {
-        return a >= b ? a : b;
-    }
-
-    function checkUpkeep(bytes calldata /*calldata*/) external view override returns (bool upkeepNeeded, bytes memory performData) {
-        uint next_keeper_time = max(expire_time, keeper_timestamp + keeper_interval);
-        if(block.timestamp <= next_keeper_time || settled) {
-            return (false, bytes(""));
-        }
-        return (true, bytes(""));
-    }
-
-    function performUpkeep(bytes calldata /*performData*/) external override {
-        //We highly recommend revalidating the upkeep in the performUpkeep function
-        uint next_keeper_time = max(expire_time, keeper_timestamp + keeper_interval);
-        require(block.timestamp > next_keeper_time && !settled);
-        keeper_timestamp = block.timestamp;
-        keeper_counter += 1;
-
-        uint ePrice = getTarget();
-        if (ePrice == underlying) {
-            node_ea(underlying_add).requestUint();
-        }
-        else {
-            underlying = ePrice;
-            expire_keeper();
-        }
     }
 
     /// get the underlying value. It is at about 648 on 8/24/22
@@ -165,10 +127,10 @@ contract optionExchange is Pausable, Ownable, KeeperCompatibleInterface {
     If untransacted bids or asks are still not canceled, deposit will be available 
     for withdraw. 
     */ 
-    function expire_keeper() private {
+    function expire() public onlyOwner {
         require(block.timestamp > expire_time, "expire time not reached yet");
         // uint256 ePrice = _ePrice * multiplier;
-        uint256 ePrice = underlying;
+        uint256 ePrice = getTarget() * multiplier;
         for (uint i=0; i<bids.length; i++) {
             if (bids[i].transacted){
                 option storage x = bids[i];
@@ -188,36 +150,7 @@ contract optionExchange is Pausable, Ownable, KeeperCompatibleInterface {
             }
             else if (!asks[i].canceled){
                 option storage x = asks[i];
-                winners[x.seller] += payout_amount - x.premium;
-            }
-        }
-        settled = true;
-    }
-
-    function expire_manual() external onlyOwner {
-        require(block.timestamp > expire_time, "expire time not reached yet");
-        // uint256 ePrice = _ePrice * multiplier;
-        uint256 ePrice = underlying;
-        for (uint i=0; i<bids.length; i++) {
-            if (bids[i].transacted){
-                option storage x = bids[i];
-                address payee = (ePrice > x.strike)? x.buyer : x.seller;
-                winners[payee] += (payout_amount - fee);
-            }
-            else if (!bids[i].canceled){
-                option storage x = bids[i];
-                winners[x.buyer] += x.premium;
-            }
-        }
-        for (uint i=0; i<asks.length; i++) {
-            if (asks[i].transacted){
-                option storage x = asks[i];
-                address payee = (ePrice > x.strike)? x.buyer : x.seller;
-                winners[payee] += (payout_amount - fee);
-            }
-            else if (!asks[i].canceled){
-                option storage x = asks[i];
-                winners[x.seller] += payout_amount - x.premium;
+                winners[x.seller] += payout_amout - x.premium;
             }
         }
         settled = true;
@@ -234,7 +167,7 @@ contract optionExchange is Pausable, Ownable, KeeperCompatibleInterface {
 
     /** allow contract owner to withdraw fees in the contract after other users
     withdraw their balances */
-    function ownerWithdraw() external payable onlyOwner{
+    function ownerWithdraw() external onlyOwner{
         require(settled, "not settled yet");
         payable(msg.sender).transfer(address(this).balance);
     }
