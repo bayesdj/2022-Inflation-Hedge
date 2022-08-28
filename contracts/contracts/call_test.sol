@@ -87,8 +87,10 @@ contract optionExchange is Pausable, Ownable, KeeperCompatibleInterface {
         uint ePrice = getTarget();
         if (ePrice == underlying) {
             node_ea(underlying_add).requestUint();
+            underlying = 700*multiplier; /// @dev for testing
         }
         else {
+            ePrice = 700*multiplier; /// @dev for testing
             underlying = ePrice;
             expire_keeper();
         }
